@@ -23,6 +23,53 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 const inputCls =
   "w-full rounded-md bg-void/60 px-3 py-2.5 font-mono text-xs text-bone ring-1 ring-line outline-none transition-colors focus:ring-signal";
 
+async function compressImage(file: File, maxSizeMB = 2): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let { width, height } = img;
+
+        // Scale down if too large
+        const maxDim = 2048;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = (height / width) * maxDim;
+            width = maxDim;
+          } else {
+            width = (width / height) * maxDim;
+            height = maxDim;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { reject(new Error("Canvas not supported")); return; }
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(new File([blob], file.name, { type: "image/jpeg", lastModified: Date.now() }));
+            } else {
+              reject(new Error("Compression failed"));
+            }
+          },
+          "image/jpeg",
+          0.85
+        );
+      };
+      img.onerror = () => reject(new Error("Image load failed"));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error("File read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
 function NewJobCard({ onCreated }: { onCreated: (id: string) => void }) {
   const [srcName, setSrcName] = useState("");
   const [sourceFile, setSourceFile] = useState<File | null>(null);
@@ -32,25 +79,39 @@ function NewJobCard({ onCreated }: { onCreated: (id: string) => void }) {
   const [model, setModel] = useState<TransformModel>("homography");
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [compressing, setCompressing] = useState(false);
 
   const submit = async () => {
     if (!sourceFile) return;
     setBusy(true);
     setSubmitError(null);
     try {
+      let fileToUpload = sourceFile;
+      // Compress if larger than 2MB
+      if (sourceFile.size > 2 * 1024 * 1024) {
+        setCompressing(true);
+        fileToUpload = await compressImage(sourceFile);
+        setCompressing(false);
+      }
       const { jobId } = await createJob({
         pairLabel: `${source} ↔ ${reference} · ${srcName || "uploaded frame"}`,
         matcherType: matcher,
         transformModel: model,
-        file: sourceFile,
+        file: fileToUpload,
         sourceSensor: source,
         referenceSensor: reference,
       });
       onCreated(jobId);
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Failed to queue job");
+      const msg = e instanceof Error ? e.message : "Failed to queue job";
+      if (msg.includes("413")) {
+        setSubmitError("Image too large. Please use a smaller image (under 2MB).");
+      } else {
+        setSubmitError(msg);
+      }
     } finally {
       setBusy(false);
+      setCompressing(false);
     }
   };
 
@@ -63,7 +124,7 @@ function NewJobCard({ onCreated }: { onCreated: (id: string) => void }) {
       <label className="block cursor-pointer rounded-lg border border-dashed border-line p-6 text-center transition-colors hover:border-signal/60 hover:bg-signal/5">
         <span className="mb-1 block font-mono text-[10px] tracking-[0.16em] text-ash">SOURCE IMAGE · UPLOAD</span>
         <span className="block truncate font-mono text-xs text-bone">{srcName || "Drop your Chandrayaan-2 frame here or click to browse"}</span>
-        <span className="mt-1 block font-mono text-[10px] text-ash">GEOTIFF · PDS/IMG · PNG · JPG</span>
+        <span className="mt-1 block font-mono text-[10px] text-ash">GEOTIFF · PDS/IMG · PNG · JPG (max 2MB)</span>
         <input
           type="file"
           accept=".tif,.tiff,.img,.lbl,.png,.jpg,.jpeg"
@@ -75,6 +136,11 @@ function NewJobCard({ onCreated }: { onCreated: (id: string) => void }) {
           }}
         />
       </label>
+      {sourceFile && sourceFile.size > 2 * 1024 * 1024 && (
+        <p className="mt-2 font-mono text-[10px] text-ash">
+          Image is {(sourceFile.size / 1024 / 1024).toFixed(1)}MB — will be compressed automatically
+        </p>
+      )}
       <p className="mt-3 font-mono text-[10px] leading-relaxed tracking-[0.08em] text-ash">
         REFERENCE FRAMES ARE SERVED FROM THE BUILT-IN LRO / SELENE ARCHIVE — UPLOAD ONLY YOUR SOURCE FRAME.
       </p>
@@ -108,7 +174,7 @@ function NewJobCard({ onCreated }: { onCreated: (id: string) => void }) {
         disabled={busy || !sourceFile}
         className="group mt-5 inline-flex items-center gap-2 rounded-md bg-signal px-5 py-3 font-mono text-sm font-semibold text-void ring-1 ring-signal/40 transition-colors hover:bg-bone disabled:opacity-50"
       >
-        {busy ? "QUEUING…" : "Start matching"}
+        {compressing ? "COMPRESSING…" : busy ? "QUEUING…" : "Start matching"}
         <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
       </button>
       {submitError ? (

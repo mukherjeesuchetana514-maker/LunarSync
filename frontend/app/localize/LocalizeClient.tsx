@@ -6,6 +6,37 @@ import { ArrowLeft, Upload, MapPin, Cpu, Target, Crosshair, CheckCircle2, XCircl
 import { localizeImage } from "@/lib/api-client";
 import { ConsoleNav } from "@/components/ConsoleNav";
 
+async function compressImage(file: File): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let { width, height } = img;
+        const maxDim = 2048;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) { height = (height / width) * maxDim; width = maxDim; }
+          else { width = (width / height) * maxDim; height = maxDim; }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { reject(new Error("Canvas not supported")); return; }
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => { if (blob) resolve(new File([blob], file.name, { type: "image/jpeg", lastModified: Date.now() })); else reject(new Error("Compression failed")); },
+          "image/jpeg", 0.85
+        );
+      };
+      img.onerror = () => reject(new Error("Image load failed"));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error("File read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
 type MatchResult = {
   status: string;
   result?: {
