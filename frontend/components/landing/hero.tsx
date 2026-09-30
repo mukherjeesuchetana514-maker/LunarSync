@@ -2,7 +2,8 @@
 
 import { animate, motion, useInView, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Crosshair } from "lucide-react";
 import { HeroVisual } from "./hero-visual";
 import { useBootStore } from "@/store/boot-store";
 
@@ -112,6 +113,19 @@ export function Hero() {
               Walk the pipeline
               <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
             </a>
+            <Link
+              href="/visualize"
+              className="inline-flex items-center gap-2 rounded-md px-5 py-3 font-mono text-sm font-medium text-bone ring-1 ring-line transition-colors hover:ring-mist"
+            >
+              <Crosshair className="size-4" />
+              Visualize Matches
+            </Link>
+            <Link
+              href="/localize"
+              className="inline-flex items-center gap-2 rounded-md px-5 py-3 font-mono text-sm font-medium text-bone ring-1 ring-line transition-colors hover:ring-mist"
+            >
+              Try Localizer
+            </Link>
             <a
               href="#problem"
               className="inline-flex items-center gap-2 rounded-md px-5 py-3 font-mono text-sm font-medium text-bone ring-1 ring-line transition-colors hover:ring-mist"

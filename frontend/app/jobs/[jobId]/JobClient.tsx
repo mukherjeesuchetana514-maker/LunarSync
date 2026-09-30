@@ -150,9 +150,47 @@ export default function JobDetail({ id }: { id: string }) {
 
             {result && (
               <div className="mt-8 space-y-8">
+                {result.location && (
+                  <section>
+                    <h2 className="mb-3 font-mono text-[11px] tracking-[0.2em] text-signal">GEOGRAPHIC BOUNDS</h2>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="rounded-xl bg-void/60 p-4 ring-1 ring-line">
+                        <div className="font-mono text-[10px] tracking-[0.16em] text-ash">LATITUDE MIN</div>
+                        <div className="mt-1 font-mono text-sm text-bone">{result.location.latitude ?? "—"}</div>
+                      </div>
+                      <div className="rounded-xl bg-void/60 p-4 ring-1 ring-line">
+                        <div className="font-mono text-[10px] tracking-[0.16em] text-ash">LATITUDE MAX</div>
+                        <div className="mt-1 font-mono text-sm text-bone">{result.location.latitudeMax ?? "—"}</div>
+                      </div>
+                      <div className="rounded-xl bg-void/60 p-4 ring-1 ring-line">
+                        <div className="font-mono text-[10px] tracking-[0.16em] text-ash">LONGITUDE MIN</div>
+                        <div className="mt-1 font-mono text-sm text-bone">{result.location.longitude ?? "—"}</div>
+                      </div>
+                      <div className="rounded-xl bg-void/60 p-4 ring-1 ring-line">
+                        <div className="font-mono text-[10px] tracking-[0.16em] text-ash">LONGITUDE MAX</div>
+                        <div className="mt-1 font-mono text-sm text-bone">{result.location.longitudeMax ?? "—"}</div>
+                      </div>
+                    </div>
+                    {result.location.fileName && (
+                      <p className="mt-2 font-mono text-[10px] text-ash">
+                        Matched frame: {result.location.fileName}
+                      </p>
+                    )}
+                  </section>
+                )}
                 <section>
                   <h2 className="mb-3 font-mono text-[11px] tracking-[0.2em] text-signal">MATCH EVIDENCE</h2>
-                  <MatchViewer matches={result.matches} sourceImg={sourceImg} referenceImg={referenceImg} />
+                  <MatchViewer
+                    matches={result.matches}
+                    sourceImg={result.sourceImageUrl ?? sourceImg}
+                    referenceImg={result.referenceImageUrl ?? referenceImg}
+                    sourceLabel="SOURCE · your upload"
+                    referenceLabel={
+                      result.location?.latitude != null
+                        ? `REFERENCE · Lat ${result.location.latitude} Lon ${result.location.longitude}`
+                        : "REFERENCE · auto-matched"
+                    }
+                  />
                 </section>
                 <section>
                   <h2 className="mb-3 font-mono text-[11px] tracking-[0.2em] text-signal">EVALUATION</h2>

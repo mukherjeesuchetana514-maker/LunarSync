@@ -3,7 +3,7 @@
 
 export type JobStatus = "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED";
 export type Reliability = "high" | "low" | "failed";
-export type MatcherType = "superpoint-superglue" | "sift" | "akaze" | "rift2";
+export type MatcherType = "superpoint-superglue" | "sift" | "akaze" | "rift2" | "cnn-sift";
 export type TransformModel = "homography" | "affine" | "similarity";
 
 export type MatchPoint = {
@@ -63,6 +63,16 @@ export type JobResult = {
   matches: MatchPoint[];
   transform: Transform;
   report: EvaluationReport;
+  sourceImageUrl?: string;
+  referenceImageUrl?: string;
+  location?: {
+    latitude?: string | number | null;
+    longitude?: string | number | null;
+    latitudeMax?: string | number | null;
+    longitudeMax?: string | number | null;
+    confidence?: number | null;
+    fileName?: string | null;
+  };
 };
 
 export const STAGES = [
@@ -84,6 +94,7 @@ export const MATCHER_LABELS: Record<MatcherType, string> = {
   sift: "SIFT + RANSAC",
   akaze: "AKAZE + RANSAC",
   rift2: "RIFT2 + RANSAC",
+  "cnn-sift": "CNN + SIFT Hybrid",
 };
 
 // Deterministic RNG so fixtures are stable across reloads.

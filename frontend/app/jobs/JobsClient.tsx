@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Upload } from "lucide-react";
+import { ArrowRight, Upload, MapPin, Cpu, Target } from "lucide-react";
 import { createJob, listJobs, type Job, type MatcherType, type TransformModel } from "@/lib/api-client";
 import { MATCHER_LABELS } from "@/lib/mock-data";
 import { JobStatusBadge } from "@/components/jobs/JobStatusBadge";
@@ -25,21 +25,30 @@ const inputCls =
 
 function NewJobCard({ onCreated }: { onCreated: (id: string) => void }) {
   const [srcName, setSrcName] = useState("");
+  const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [source, setSource] = useState<(typeof SOURCES)[number]>("OHRC");
   const [reference, setReference] = useState<(typeof REFERENCES)[number]>("LRO NAC");
-  const [matcher, setMatcher] = useState<MatcherType>("superpoint-superglue");
+  const [matcher, setMatcher] = useState<MatcherType>("sift");
   const [model, setModel] = useState<TransformModel>("homography");
   const [busy, setBusy] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const submit = async () => {
+    if (!sourceFile) return;
     setBusy(true);
+    setSubmitError(null);
     try {
       const { jobId } = await createJob({
         pairLabel: `${source} ↔ ${reference} · ${srcName || "uploaded frame"}`,
         matcherType: matcher,
         transformModel: model,
+        file: sourceFile,
+        sourceSensor: source,
+        referenceSensor: reference,
       });
       onCreated(jobId);
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : "Failed to queue job");
     } finally {
       setBusy(false);
     }
@@ -55,7 +64,16 @@ function NewJobCard({ onCreated }: { onCreated: (id: string) => void }) {
         <span className="mb-1 block font-mono text-[10px] tracking-[0.16em] text-ash">SOURCE IMAGE · UPLOAD</span>
         <span className="block truncate font-mono text-xs text-bone">{srcName || "Drop your Chandrayaan-2 frame here or click to browse"}</span>
         <span className="mt-1 block font-mono text-[10px] text-ash">GEOTIFF · PDS/IMG · PNG · JPG</span>
-        <input type="file" accept=".tif,.tiff,.img,.lbl,.png,.jpg" className="hidden" onChange={(e) => setSrcName(e.target.files?.[0]?.name ?? "")} />
+        <input
+          type="file"
+          accept=".tif,.tiff,.img,.lbl,.png,.jpg,.jpeg"
+          className="hidden"
+          onChange={(e) => {
+            const next = e.target.files?.[0] ?? null;
+            setSourceFile(next);
+            setSrcName(next?.name ?? "");
+          }}
+        />
       </label>
       <p className="mt-3 font-mono text-[10px] leading-relaxed tracking-[0.08em] text-ash">
         REFERENCE FRAMES ARE SERVED FROM THE BUILT-IN LRO / SELENE ARCHIVE — UPLOAD ONLY YOUR SOURCE FRAME.
@@ -87,13 +105,38 @@ function NewJobCard({ onCreated }: { onCreated: (id: string) => void }) {
       <button
         type="button"
         onClick={submit}
-        disabled={busy}
+        disabled={busy || !sourceFile}
         className="group mt-5 inline-flex items-center gap-2 rounded-md bg-signal px-5 py-3 font-mono text-sm font-semibold text-void ring-1 ring-signal/40 transition-colors hover:bg-bone disabled:opacity-50"
       >
         {busy ? "QUEUING…" : "Start matching"}
         <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
       </button>
+      {submitError ? (
+        <p className="mt-3 font-mono text-[10px] leading-relaxed text-destructive">{submitError}</p>
+      ) : null}
     </div>
+  );
+}
+
+function JobRow({ job, onSelect }: { job: Job; onSelect: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="grid w-full grid-cols-[1fr_auto] items-center gap-3 border-b border-line/40 px-4 py-3.5 text-left transition-colors last:border-0 hover:bg-signal/5 sm:grid-cols-[1fr_180px_150px_90px_90px]"
+    >
+      <span>
+        <span className="block text-sm font-medium text-bone">{job.pairLabel}</span>
+        <span className="mt-0.5 block font-mono text-[10px] text-ash">
+          {job.id} · {job.meta.sourceSensor} {job.meta.sourceGsdM} m/px → {job.meta.referenceSensor} {job.meta.referenceGsdM} m/px
+        </span>
+      </span>
+      <span className="hidden font-mono text-[11px] text-mist sm:block">{MATCHER_LABELS[job.matcherType]}</span>
+      <span className="hidden sm:block"><JobStatusBadge status={job.status} /></span>
+      <span className="hidden text-right font-mono text-xs tabular text-bone sm:block">—</span>
+      <span className="hidden text-right font-mono text-xs tabular text-bone sm:block">—</span>
+      <span className="sm:hidden"><JobStatusBadge status={job.status} /></span>
+    </button>
   );
 }
 
@@ -143,27 +186,12 @@ export default function JobsPage() {
             <p className="px-4 py-8 font-mono text-xs text-destructive">Failed to load jobs: {error}</p>
           ) : !jobs ? (
             <p className="px-4 py-8 font-mono text-xs text-mist">Loading jobs…</p>
+          ) : jobs.length === 0 ? (
+            <div className="px-4 py-12 text-center">
+              <p className="font-mono text-xs text-mist">No jobs yet. Upload a source frame to start matching.</p>
+            </div>
           ) : (
-            jobs.map((j) => (
-              <button
-                key={j.id}
-                type="button"
-                onClick={() => router.push(`/jobs/${j.id}`)}
-                className="grid w-full grid-cols-[1fr_auto] items-center gap-3 border-b border-line/40 px-4 py-3.5 text-left transition-colors last:border-0 hover:bg-signal/5 sm:grid-cols-[1fr_180px_150px_90px_90px]"
-              >
-                <span>
-                  <span className="block text-sm font-medium text-bone">{j.pairLabel}</span>
-                  <span className="mt-0.5 block font-mono text-[10px] text-ash">
-                    {j.id} · {j.meta.sourceSensor} {j.meta.sourceGsdM} m/px → {j.meta.referenceSensor} {j.meta.referenceGsdM} m/px
-                  </span>
-                </span>
-                <span className="hidden font-mono text-[11px] text-mist sm:block">{MATCHER_LABELS[j.matcherType]}</span>
-                <span className="hidden sm:block"><JobStatusBadge status={j.status} /></span>
-                <span className="hidden text-right font-mono text-xs tabular text-bone sm:block">—</span>
-                <span className="hidden text-right font-mono text-xs tabular text-bone sm:block">—</span>
-                <span className="sm:hidden"><JobStatusBadge status={j.status} /></span>
-              </button>
-            ))
+            jobs.map((j) => <JobRow key={j.id} job={j} onSelect={() => router.push(`/jobs/${j.id}`)} />)
           )}
         </div>
       </div>

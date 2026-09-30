@@ -90,6 +90,7 @@ dmypy.json
 *.log
 *.sqlite
 *.sqlite3
+backend/data/
 
 # =========================
 # IDE / Editors

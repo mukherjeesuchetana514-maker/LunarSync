@@ -17,107 +17,89 @@ type Stage = {
 const STAGES: Stage[] = [
   {
     id: "01",
-    name: "Ingest",
-    short: "Read imagery + labels",
+    name: "CNN Screening",
+    short: "Global embedding match",
     detail:
-      "Source and reference products are read together with their labels — sensor and mode, acquisition time, sun azimuth and elevation, nominal GSD, projection and footprint. Nothing downstream is trustworthy without knowing what is being looked at.",
-    input: "PDS / GeoTIFF products",
-    output: "Frames + parsed metadata",
+      "ResNet50 generates a compact global embedding for the query frame. Dot-product similarity against the pre-computed database index rapidly narrows 600+ archive frames down to the top-10 candidates — lightning-fast deep global vector screening.",
+    input: "Query image + HF database",
+    output: "Top-10 candidate frames",
   },
   {
     id: "02",
-    name: "Preprocess",
-    short: "Common frame, common depth",
+    name: "SIFT Extract",
+    short: "Local feature detection",
     detail:
-      "Reproject to a shared frame where georeferencing exists, normalise to a common bit depth for the matching stage, and keep the full-precision product separate for science use.",
-    input: "Frames + metadata",
-    output: "Normalised tiles",
+      "SIFT detects up to 5000 keypoints with contrast and edge thresholds tuned for lunar terrain. RootSIFT (Hellinger kernel) normalization is applied for improved matching performance under illumination changes.",
+    input: "Query + candidate frames",
+    output: "Keypoints + RootSIFT descriptors",
   },
   {
     id: "03",
-    name: "Illumination",
-    short: "Take the sun out of it",
-    detail:
-      "CLAHE, histogram matching, log transforms and shadow normalisation chosen per sensor pair, so that opposite shadow directions stop dominating the descriptors.",
-    input: "Normalised tiles",
-    output: "Photometrically levelled tiles",
-  },
-  {
-    id: "04",
-    name: "Overlap",
-    short: "Search where it matters",
-    detail:
-      "Footprint metadata — or a coarse, heavily downsampled whole-image match as fallback — restricts the reference to the likely overlap before fine matching. Saves compute and kills false matches from unrelated terrain.",
-    input: "Footprints",
-    output: "Region of interest",
-  },
-  {
-    id: "05",
-    name: "Features",
-    short: "Detect and describe",
-    detail:
-      "Classical detectors (SIFT, ASIFT, AKAZE, RIFT2) or learned ones (SuperPoint) run over both frames. For a hyperspectral IIRS cube, one representative band is selected first and the resulting transform is propagated to the rest.",
-    input: "Levelled tiles",
-    output: "Keypoints + descriptors",
-  },
-  {
-    id: "06",
-    name: "Match",
+    name: "Ratio Match",
     short: "Propose correspondences",
     detail:
-      "Nearest neighbour with a ratio test on the classical path, or graph-neural joint matching with SuperGlue / LightGlue on the learned path. A cheap geometric plausibility filter trims very large candidate sets.",
-    input: "Descriptors",
+      "Nearest-neighbour matching with Lowe's ratio test (0.75 threshold) on RootSIFT descriptors. Mutual best-match filtering and cross-check fallback ensure only high-confidence candidate pairs survive.",
+    input: "RootSIFT descriptors",
     output: "Candidate point pairs",
   },
   {
-    id: "07",
-    name: "RANSAC",
-    short: "Throw out the liars",
+    id: "04",
+    name: "Consensus Vote",
+    short: "Spatial grid voting",
     detail:
-      "A transform model — similarity, affine or homography — is fitted robustly; MAGSAC++ style variants remove the manual inlier-threshold guesswork. Outliers are labelled, not silently dropped.",
-    input: "Candidate pairs",
-    output: "Inliers + model",
+      "Top-5 candidates vote on their geographic grid cell (parsed from filename lat/lon). The winning grid cell with majority votes locks onto the correct geographic region — spatial consensus ensemble filtering.",
+    input: "Top-5 candidates + grid IDs",
+    output: "Winning geographic cell",
   },
   {
-    id: "08",
-    name: "Distribute",
-    short: "Grid-select the inliers",
+    id: "05",
+    name: "MAGSAC Reject",
+    short: "Outlier rejection",
     detail:
-      "Inliers are binned across the overlap region and capped per cell so the retained control points cover the frame evenly — the PS asks for uniform distribution, and a well-spread set fits a far more stable transform.",
-    input: "Inlier set",
+      "USAC_MAGSAC homography estimation with 3.0px reprojection threshold and 3000 max iterations. Robust outlier rejection removes mismatches while preserving geometrically consistent inliers — far superior to standard RANSAC.",
+    input: "Candidate pairs + homography",
+    output: "Verified inliers + transform",
+  },
+  {
+    id: "06",
+    name: "Subpixel Refine",
+    short: "Phase correlation",
+    detail:
+      "Local phase correlation with Hanning window provides fractional-pixel correction to geometrically predicted match points. Only refinements with sufficient phase response (>0.05) are accepted.",
+    input: "Inlier matches + images",
+    output: "Sub-pixel refined pairs",
+  },
+  {
+    id: "07",
+    name: "Uniform Select",
+    short: "Grid binning",
+    detail:
+      "Inliers are binned across an 8×8 grid and capped per cell so retained control points cover the frame evenly. Uniform spatial distribution ensures a stable, well-conditioned transform fit.",
+    input: "Refined inlier set",
     output: "Uniform control points",
   },
   {
+    id: "08",
+    name: "Geolocate",
+    short: "Extract coordinates",
+    detail:
+      "The matched frame's filename encodes its geographic bounds (lat/lon ranges). These are parsed and returned as the final localization result — the pixel coordinates on the lunar surface where the query image was captured.",
+    input: "Matched frame filename",
+    output: "Lat/lon geographic bounds",
+  },
+  {
     id: "09",
-    name: "Sub-pixel",
-    short: "Below the pixel grid",
-    detail:
-      "Each retained match is refined by fitting a parabola or 2-D Gaussian to the correlation surface around the peak, or by small-window least-squares matching. At 0.25 m/pixel, one pixel of slop is 25 cm of ground error.",
-    input: "Control points",
-    output: "Refined sub-pixel pairs",
-  },
-  {
-    id: "10",
-    name: "Warp",
-    short: "Resample into register",
-    detail:
-      "The transform is refitted on the refined set, then the source is resampled into the reference frame. Bilinear is the robust default; bicubic can underperform under strong shadow contrast.",
-    input: "Refined pairs",
-    output: "Registered product",
-  },
-  {
-    id: "11",
     name: "Evaluate",
     short: "Report the numbers",
     detail:
-      "RMSE on held-out check points, inlier count and ratio, a spatial coverage diagnostic and processing time — plus match-line overlays and checkerboard blends for visual inspection.",
-    input: "Registered product + pairs",
+      "RMSE on verified inliers, consensus confidence score, inlier count and ratio, processing time — plus match-line overlays and coverage diagnostics for visual inspection.",
+    input: "Registration result",
     output: "Metrics + visualisations",
   },
 ];
 
 export function Pipeline() {
-  const [activeId, setActiveId] = useState<string>("06");
+  const [activeId, setActiveId] = useState<string>("05");
   const reduced = useReducedMotion();
   const active = STAGES.find((s) => s.id === activeId) ?? (STAGES[0] as Stage);
 
@@ -127,7 +109,7 @@ export function Pipeline() {
         <SectionHeading
           index="04"
           eyebrow="HOW IT WORKS"
-          title="Eleven stages, from raw product to a scored registration."
+          title="Nine stages, from CNN screening to geographic localization."
           note="Select a stage to see what enters it and what leaves it."
         />
 
@@ -197,7 +179,7 @@ export function Pipeline() {
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt className="text-ash">POSITION</dt>
-                  <dd className="tabular text-right text-signal">{active.id} / 11</dd>
+                  <dd className="tabular text-right text-signal">{active.id} / 9</dd>
                 </div>
               </dl>
             </motion.div>

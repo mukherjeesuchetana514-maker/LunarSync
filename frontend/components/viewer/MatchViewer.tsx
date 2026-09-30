@@ -5,13 +5,22 @@ import Image, { type StaticImageData } from "next/image";
 import type { MatchPoint } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
+type LunarImg = StaticImageData | string;
+
 type Props = {
   matches: MatchPoint[];
-  sourceImg: StaticImageData;
-  referenceImg: StaticImageData;
+  sourceImg: LunarImg;
+  referenceImg: LunarImg;
   sourceLabel?: string;
   referenceLabel?: string;
 };
+
+function FrameImage({ src, alt, className }: { src: LunarImg; alt: string; className?: string }) {
+  if (typeof src === "string") {
+    return <img src={src} alt={alt} className={className} />;
+  }
+  return <Image src={src} alt={alt} className={className} />;
+}
 
 function MarkerLayer({
   points,
@@ -85,7 +94,7 @@ export function MatchViewer({ matches, sourceImg, referenceImg, sourceLabel = "S
             { img: referenceImg, label: referenceLabel, coord: (m: MatchPoint): [number, number] => [m.refX, m.refY] },
           ].map((p) => (
             <figure key={p.label} className="relative overflow-hidden rounded-xl bg-panel ring-1 ring-white/10">
-              <Image src={p.img} alt={p.label} className="aspect-square w-full object-cover" />
+              <FrameImage src={p.img} alt={p.label} className="aspect-square w-full object-cover" />
               <MarkerLayer points={matches} coord={p.coord} showOutliers={showOutliers} />
               <figcaption className="absolute left-2 top-2 rounded bg-void/70 px-2 py-0.5 font-mono text-[9px] tracking-[0.12em] text-mist">
                 {p.label}
@@ -95,9 +104,9 @@ export function MatchViewer({ matches, sourceImg, referenceImg, sourceLabel = "S
         </div>
       ) : (
         <div className="relative overflow-hidden rounded-xl bg-panel ring-1 ring-white/10">
-          <Image src={referenceImg} alt={referenceLabel} className="aspect-[16/9] w-full object-cover" />
+          <FrameImage src={referenceImg} alt={referenceLabel} className="aspect-[16/9] w-full object-cover" />
           <div className="absolute inset-0 overflow-hidden" style={{ clipPath: `inset(0 ${100 - blend}% 0 0)` }}>
-            <Image src={sourceImg} alt={sourceLabel} className="aspect-[16/9] w-full object-cover opacity-70 mix-blend-screen" />
+            <FrameImage src={sourceImg} alt={sourceLabel} className="aspect-[16/9] w-full object-cover opacity-70 mix-blend-screen" />
           </div>
           <div aria-hidden className="pointer-events-none absolute inset-y-0 w-px bg-signal" style={{ left: `${blend}%` }} />
           <span className="absolute left-2 top-2 rounded bg-void/70 px-2 py-0.5 font-mono text-[9px] text-mist">SRC</span>
