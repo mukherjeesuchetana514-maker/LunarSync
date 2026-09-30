@@ -117,16 +117,24 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ path: stri
   try {
     const init: RequestInit = { method: "POST" };
     if (contentType.includes("multipart/form-data")) {
-      init.body = await req.formData();
+      const formData = await req.formData();
+      init.body = formData;
     } else {
       init.headers = { "Content-Type": "application/json" };
       init.body = await req.text();
     }
     const backendPath = segments[0] === "match" ? "/match" : "/jobs";
-    const res = await backendFetch(backendPath, init);
-    const data = await res.json().catch(() => ({ error: "backend error" }));
-    return NextResponse.json(data, { status: res.status });
-  } catch {
+    const res = await fetch(`${BACKEND}${backendPath}`, init);
+    if (!res.ok) {
+      const text = await res.text();
+      return NextResponse.json({ error: text || `Backend error: ${res.status}` }, { status: res.status });
+    }
+    const data = await res.json();
+    return NextResponse.json(data);
+  } catch (err) {
+    return NextResponse.json({ error: `Proxy error: ${err instanceof Error ? err.message : "unknown"}` }, { status: 502 });
+  }
+  if (false) {
     if (contentType.includes("multipart/form-data")) {
       return NextResponse.json(
         { error: "FastAPI backend is not running on port 8000. Start it with: uvicorn app.main:app --port 8000" },
