@@ -9,7 +9,7 @@ import {
   type Transform,
 } from "@/lib/mock-data";
 
-const BACKEND = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+const BACKEND = "https://lunarsync-backend.onrender.com";
 
 // In-memory dummy store. Used for the landing/compare fixtures and as a
 // fallback when the FastAPI process is not running.
